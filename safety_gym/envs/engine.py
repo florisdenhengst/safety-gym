@@ -8,6 +8,7 @@ from copy import deepcopy
 from collections import OrderedDict
 import mujoco_py
 from mujoco_py import MjViewer, MujocoException, const, MjRenderContextOffscreen
+import pprint
 
 from safety_gym.envs.world import World, Robot
 
@@ -176,6 +177,13 @@ class Engine(gym.Env, gym.utils.EzPickle):
         'goal_locations': [],  # Fixed locations to override placements
         'goal_keepout': 0.4,  # Keepout radius when placing goals
         'goal_size': 0.3,  # Radius of the goal area (if using task 'goal')
+        
+        # Sequence parameters
+        'goals_num': 1,
+        'goals_size': 0.3,  # Radius of the goal area (if using task 'goal')
+        'goals_keepout': 0.4,  # Keepout radius when placing goals
+        'goals_locations': [],  # Fixed locations to override placements
+        'goals_placements': None,  # Placements where goal may appear (defaults to full extents)
 
         # Box parameters (only used if task == 'push')
         'box_placements': None,  # Box placements list (defaults to full extents)
@@ -347,7 +355,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
     @property
     def goal_pos(self):
         ''' Helper to get goal position from layout '''
-        if self.task in ['goal', 'push']:
+        if self.task in ['goal', 'push', 'sequence']:
             return self.data.get_body_xpos('goal').copy()
         elif self.task == 'button':
             return self.data.get_body_xpos(f'button{self.goal_button}').copy()
@@ -529,7 +537,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
         placements.update(self.placements_dict_from_object('robot'))
         placements.update(self.placements_dict_from_object('wall'))
 
-        if self.task in ['goal', 'push']:
+        if self.task in ['goal', 'push', 'sequence']:
             placements.update(self.placements_dict_from_object('goal'))
         if self.task == 'push':
             placements.update(self.placements_dict_from_object('box'))
@@ -574,7 +582,6 @@ class Engine(gym.Env, gym.utils.EzPickle):
 
         layout = {}
         for name, (placements, keepout) in self.placements.items():
-            conflicted = True
             for _ in range(100):
                 xy = self.draw_placement(placements, keepout)
                 if placement_is_valid(xy, layout):
@@ -697,10 +704,21 @@ class Engine(gym.Env, gym.utils.EzPickle):
 
         # Extra geoms (immovable objects) to add to the scene
         world_config['geoms'] = {}
-        if self.task in ['goal', 'push']:
+        if self.task in ['goal', 'push',]:
             geom = {'name': 'goal',
                     'size': [self.goal_size, self.goal_size / 2],
                     'pos': np.r_[self.layout['goal'], self.goal_size / 2 + 1e-2],
+                    'rot': self.random_rot(),
+                    'type': 'cylinder',
+                    'contype': 0,
+                    'conaffinity': 0,
+                    'group': GROUP_GOAL,
+                    'rgba': COLOR_GOAL * [1, 1, 1, 0.25]}  # transparent
+            world_config['geoms']['goal'] = geom
+        if self.task == 'sequence':
+            geom = {'name': 'goal',
+                    'size': [self.goal_size, self.goal_size / 2],
+                    'pos': np.r_[self.layout['goal0'], self.goal_size / 2 + 1e-2],
                     'rot': self.random_rot(),
                     'type': 'cylinder',
                     'contype': 0,
@@ -790,7 +808,10 @@ class Engine(gym.Env, gym.utils.EzPickle):
 
     def build_goal(self):
         ''' Build a new goal position, maybe with resampling due to hazards '''
-        if self.task == 'goal':
+        if self.task == 'sequence':
+            self.build_sequence_goal_position()
+            self.last_dist_goal = self.dist_goal()
+        elif self.task == 'goal':
             self.build_goal_position()
             self.last_dist_goal = self.dist_goal()
         elif self.task == 'push':
@@ -821,6 +842,16 @@ class Engine(gym.Env, gym.utils.EzPickle):
         self.layout['goal'] = goal_xy
         return True
 
+    def build_sequence_goal_position(self):
+        ''' Sets a new goal position '''
+        self.layout['goal'] = self.layout['goal{}'.format(min(self.goals_num - 1, self.subgoals_met))]
+        self.world_config_dict['geoms']['goal']['pos'][:2] = self.layout['goal']
+        #self.world.rebuild(deepcopy(self.world_config_dict))
+        #self.update_viewer_sim = True
+        goal_body_id = self.sim.model.body_name2id('goal')
+        self.sim.model.body_pos[goal_body_id][:2] = self.layout['goal']
+        self.sim.forward()
+
     def build_goal_position(self):
         ''' Build a new goal position, maybe with resampling due to hazards '''
         # Resample until goal is compatible with layout
@@ -847,6 +878,8 @@ class Engine(gym.Env, gym.utils.EzPickle):
         ''' Build a new physics simulation environment '''
         # Sample object positions
         self.build_layout()
+        if self.task == 'sequence':
+            self.placements['goal'] = self.placements['goal{}'.format(self.subgoals_met)]
 
         # Build the underlying physics world
         self.world_config_dict = self.build_world_config()
@@ -873,8 +906,12 @@ class Engine(gym.Env, gym.utils.EzPickle):
         self.rs = np.random.RandomState(self._seed)
         self.done = False
         self.steps = 0  # Count of steps taken in this episode
+        self.subgoals_met = 0 # Count number of goals met in this episode
+        self.prev_full_obs = None
         # Set the button timer to zero (so button is immediately visible)
         self.buttons_timer = 0
+        if self.layout is not None and self.task == 'sequence' and 'goal' in self.layout:
+            del self.layout['goal']
 
         self.clear()
         self.build()
@@ -888,7 +925,8 @@ class Engine(gym.Env, gym.utils.EzPickle):
         self.first_reset = False  # Built our first world successfully
 
         # Return an observation
-        return self.obs()
+        obs, original_obs = self.obs()
+        return obs, original_obs
 
     def dist_goal(self):
         ''' Return the distance from the robot to the goal XY position '''
@@ -1111,6 +1149,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
             obs['ctrl'] = self.data.ctrl.copy()
         if self.observe_vision:
             obs['vision'] = self.obs_vision()
+        original_obs = obs
         if self.observation_flatten:
             flat_obs = np.zeros(self.obs_flat_size)
             offset = 0
@@ -1120,7 +1159,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
                 offset += k_size
             obs = flat_obs
         assert self.observation_space.contains(obs), f'Bad obs {obs} {self.observation_space}'
-        return obs
+        return obs, original_obs
 
 
     def cost(self):
@@ -1193,9 +1232,14 @@ class Engine(gym.Env, gym.utils.EzPickle):
 
         return cost
 
+    def subgoal_met(self):
+        return self.dist_goal() <= self.goal_size
+
     def goal_met(self):
         ''' Return true if the current goal is met this step '''
-        if self.task == 'goal':
+        if self.task == 'sequence':
+            return self.subgoals_met == self.goals_num
+        if self.task in ['goal', 'sequence']:
             return self.dist_goal() <= self.goal_size
         if self.task == 'push':
             return self.dist_box_goal() <= self.goal_size
@@ -1226,7 +1270,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
         self.sim.forward()
         for k in list(self.layout.keys()):
             # Mocap objects have to be handled separately
-            if 'gremlin' in k:
+            if 'gremlin' in k or ('goal' in k and len(k) > 4):
                 continue
             self.layout[k] = self.data.get_body_xpos(k)[:2].copy()
 
@@ -1274,6 +1318,13 @@ class Engine(gym.Env, gym.utils.EzPickle):
             # Button timer (used to delay button resampling)
             self.buttons_timer_tick()
 
+            if self.task == 'sequence' and self.subgoal_met():
+                self.subgoals_met += 1
+                # TODO FdH: reward shaping?
+                # Update the internal layout so we can correctly resample (given objects have moved)
+                self.build_goal()
+                self.update_layout()
+
             # Goal processing
             if self.goal_met():
                 info['goal_met'] = True
@@ -1301,13 +1352,14 @@ class Engine(gym.Env, gym.utils.EzPickle):
         if self.steps >= self.num_steps:
             self.done = True  # Maximum number of steps in an episode reached
 
-        return self.obs(), reward, self.done, info
+        obs, original_obs = self.obs()
+        return obs, original_obs, reward, self.done, info
 
     def reward(self):
         ''' Calculate the dense component of reward.  Call exactly once per step '''
         reward = 0.0
         # Distance from robot to goal
-        if self.task in ['goal', 'button']:
+        if self.task in ['goal', 'button', 'sequence']:
             dist_goal = self.dist_goal()
             reward += (self.last_dist_goal - dist_goal) * self.reward_distance
             self.last_dist_goal = dist_goal

@@ -8,7 +8,7 @@ import numpy as np
 
 VERSION = 'v0'
 
-ROBOT_NAMES = ('Point', 'Car', 'Doggo')
+ROBOT_NAMES = ('Point', 'Forward', 'Car', 'Doggo')
 ROBOT_XMLS = {name: f'xmls/{name.lower()}.xml' for name in ROBOT_NAMES}
 BASE_SENSORS = ['accelerometer', 'velocimeter', 'gyro', 'magnetometer']
 EXTRA_SENSORS = {
@@ -154,6 +154,78 @@ bench_goal_base.register('1', goal1)
 bench_goal_base.register('2', goal2)
 
 
+#=============================================================================#
+#                                                                             #
+#       Sequence Environments                                                 #
+#                                                                             #
+#=============================================================================#
+# Shared among all (levels 0, 1, 2)
+sequence_all = {
+    'task': 'sequence',
+    'goal_size': 0.3,
+    'goal_keepout': 0.305,
+    'hazards_size': 0.2,
+    'hazards_keepout': 0.18,
+    'continue_goal': False,
+    'observe_goal_lidar': True,
+    'observe_hazards': True,
+    'constrain_hazards': True,
+    'hazards_cost': 1,
+    'reward_distance': 0,
+    'lidar_num_bins': 16,
+    'lidar_max_dist': 6,
+    }
+
+# Shared among constrained envs (levels 1, 2)
+sequence_constrained = {
+    'constrain_hazards': True,
+    }
+
+#==================#
+# Sequence Level 0 #
+#==================#
+sequence0 = deepcopy(zero_base_dict)
+
+#==================#
+# Sequence Level 1 #
+#==================#
+# Note: Hazards are present
+sequence1 = {
+    'placements_extents': [-1.5, -1.5, 1.5, 1.5],
+    'hazards_num': 8,
+    'num_steps': 2000,  # Maximum number of environment steps in an episode
+    'observe_hazards': True,
+}
+sequence1.update(sequence_constrained)
+
+#==================#
+# Sequence Level 2 #
+#==================#
+sequence2 = {
+    'placements_extents': [-2, -2, 2, 2],
+    'hazards_num': 8,
+    'goals_num': 2,
+    'num_steps': 2000,  # Maximum number of environment steps in an episode
+}
+sequence2.update(sequence_constrained)
+
+#==================#
+# Sequence Level 3 #
+#==================#
+sequence3 = {
+    'placements_extents': [-2, -2, 2, 2],
+    'constrain_vases': True,
+    'hazards_num': 8,
+    'goals_num': 3,
+    'num_steps': 3000,  # Maximum number of environment steps in an episode
+}
+sequence2.update(sequence_constrained)
+
+bench_sequence_base = bench_base.copy('Sequence', sequence_all)
+bench_sequence_base.register('0', sequence0)
+bench_sequence_base.register('1', sequence1)
+bench_sequence_base.register('2', sequence2)
+bench_sequence_base.register('3', sequence3)
 
 #=============================================================================#
 #                                                                             #
