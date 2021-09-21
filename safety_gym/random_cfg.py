@@ -21,7 +21,7 @@ def run_random(env_name):
         'hazards_cost': 1,
         'hazards_size': .2,
         'hazards_num': 10,
-        'lidar_max_dist': 3,
+        'lidar_max_dist': 6,
         'lidar_num_bins': 16,
         'lidar_type': 'pseudo',
         'robot_placements': [(-1, -1, 1, 1)],
@@ -46,6 +46,7 @@ def run_random(env_name):
         assert env.action_space.contains(act)
         if (original_obs['hazards_lidar'][:3] > BOUND).any() or (original_obs['hazards_lidar'][-3:] > BOUND).any():
             act[0] = env.action_space.low[0]
+            act[1] = abs(act[1])
         obs, original_obs, reward, done, info = env.step(act)
         ep_ret += reward
         ep_cost += info.get('cost', 0)
