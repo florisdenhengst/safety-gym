@@ -6,9 +6,12 @@ import safety_gym  # noqa
 import numpy as np  # noqa
 from safety_gym.envs.engine import Engine
 
-BOUND = .83
+BOUND = .85
 
-def run_random(env_name):
+def unsafe(oo):
+    return (oo['hazards_lidar'][:3] > BOUND).any() or (oo['hazards_lidar'][-3:] > BOUND).any()
+
+def run_random(env_name, render):
     config = {
         'num_steps': 1000,
         'continue_goal': False,
@@ -20,14 +23,16 @@ def run_random(env_name):
         'goal_size': .4,
         'hazards_cost': 1,
         'hazards_size': .2,
-        'hazards_num': 10,
+        'hazards_keepout': 0.5,
+        'hazards_num': 5,
         'lidar_max_dist': 6,
         'lidar_num_bins': 16,
         'lidar_type': 'pseudo',
         'robot_placements': [(-1, -1, 1, 1)],
+        'placements_extents': [-2, -2, 2, 2],
         'robot_base': 'xmls/forward.xml',
         'task': 'sequence',
-        'goals_num': 2,
+        'goals_num': 1,
         'reward_distance': 0, # no shaping/only sparse rewards
     }
     env = Engine(config)
@@ -44,18 +49,20 @@ def run_random(env_name):
         assert env.observation_space.contains(obs)
         act = env.action_space.sample()
         assert env.action_space.contains(act)
-        if (original_obs['hazards_lidar'][:3] > BOUND).any() or (original_obs['hazards_lidar'][-3:] > BOUND).any():
+        if unsafe(original_obs):
             act[0] = env.action_space.low[0]
             act[1] = abs(act[1])
         obs, original_obs, reward, done, info = env.step(act)
         ep_ret += reward
         ep_cost += info.get('cost', 0)
-        env.render()
+        if render:
+            env.render()
         step += 1
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', default='Safexp-PointGoal1-v0')
+    parser.add_argument('--render', action='store_true', default=False)
     args = parser.parse_args()
-    run_random(args.env)
+    run_random(args.env, args.render)

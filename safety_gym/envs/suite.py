@@ -165,7 +165,7 @@ sequence_all = {
     'goal_size': 0.3,
     'goal_keepout': 0.305,
     'hazards_size': 0.2,
-    'hazards_keepout': 0.18,
+    'hazards_keepout': 0.5,
     'continue_goal': False,
     'observe_goal_lidar': True,
     'observe_hazards': True,
@@ -219,13 +219,24 @@ sequence3 = {
     'goals_num': 3,
     'num_steps': 3000,  # Maximum number of environment steps in an episode
 }
-sequence2.update(sequence_constrained)
+sequence3.update(sequence_constrained)
 
 bench_sequence_base = bench_base.copy('Sequence', sequence_all)
-bench_sequence_base.register('0', sequence0)
-bench_sequence_base.register('1', sequence1)
-bench_sequence_base.register('2', sequence2)
-bench_sequence_base.register('3', sequence3)
+for h in range(8):
+    for s in range(1,5):
+        sequence_n = deepcopy(sequence_all)
+        sequence_n.update({
+            'hazards_num': h,
+            'goals_num': s,
+            'constrain_hazards': True,
+            'observe_hazards': h > 0,
+            })
+        bench_sequence_base.register('{}{}'.format(h,s), sequence_n)
+
+#bench_sequence_base.register('0', sequence0)
+#bench_sequence_base.register('1', sequence1)
+#bench_sequence_base.register('2', sequence2)
+#bench_sequence_base.register('3', sequence3)
 
 #=============================================================================#
 #                                                                             #
