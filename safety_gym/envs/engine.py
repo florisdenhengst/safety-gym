@@ -208,6 +208,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
         'reward_z': 1.0,  # Reward for standup tests (vel in z direction)
         'reward_circle': 1e-1,  # Reward for circle goal (complicated formula depending on pos and vel)
         'reward_clip': 10,  # Clip reward, last resort against physics errors causing magnitude spikes
+        'shaping_reward': 0, # Reward for moving closer to goal in safety game
 
         # Buttons are small immovable spheres, to the environment
         'buttons_num': 0,  # Number of buttons to add

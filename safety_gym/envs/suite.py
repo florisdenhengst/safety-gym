@@ -224,14 +224,16 @@ sequence3.update(sequence_constrained)
 bench_sequence_base = bench_base.copy('Sequence', sequence_all)
 for h in range(8):
     for s in range(1,5):
-        sequence_n = deepcopy(sequence_all)
-        sequence_n.update({
-            'hazards_num': h,
-            'goals_num': s,
-            'constrain_hazards': True,
-            'observe_hazards': h > 0,
-            })
-        bench_sequence_base.register('{}{}'.format(h,s), sequence_n)
+        for srl, sr in [('n', 0), ('l', 0.01), ('h', 0.1)]:
+            sequence_n = deepcopy(sequence_all)
+            sequence_n.update({
+                'shaping_reward': sr,
+                'hazards_num': h,
+                'goals_num': s,
+                'constrain_hazards': True,
+                'observe_hazards': h > 0,
+                })
+            bench_sequence_base.register('{}{}{}'.format(h,s,srl), sequence_n)
 
 #bench_sequence_base.register('0', sequence0)
 #bench_sequence_base.register('1', sequence1)
