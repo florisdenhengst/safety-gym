@@ -5,11 +5,34 @@ import gym
 import safety_gym  # noqa
 import numpy as np  # noqa
 from safety_gym.envs.engine import Engine
+from pprint import pprint
 
-BOUND = .85
+#BOUND = .83
+BOUND_S = np.linspace(.83,.9,4)
+BOUND_E = BOUND_S[::-1]
+
+def moving(oo):
+    moving = np.absolute(oo['accelerometer'][:2]).max() > .4
+    return moving
 
 def unsafe(oo):
-    return (oo['hazards_lidar'][:3] > BOUND).any() or (oo['hazards_lidar'][-3:] > BOUND).any()
+    n = 4
+    if 'hazards_lidar' in oo:
+        hl = (oo['hazards_lidar'][:4] > BOUND_S).any() or (oo['hazards_lidar'][-4:] > BOUND_E).any()
+    else:
+        hl = False
+    if 'walls_lidar' in oo:
+        wl = (oo['walls_lidar'][:4] > BOUND_S).any() or (oo['walls_lidar'][-4:] > BOUND_E).any()
+    else:
+        wl = False
+    return hl or wl
+
+wall_locs = [
+        (-4,4),(-4,3),(-4,2),(-4,1),(-4,0),(-4,-1),(-4,-2),(-4,-3),(-4,-4),
+        (-3,4),(-2,4),(-1,4),(0,4),(1,4),(2,4),(3,4),
+        ( 4,4),( 4,3),( 4,2),( 4,1),( 4,0),( 4,-1),( 4,-2),( 4,-3),( 4,-4),
+        (3,-4),(2,-4),(1,-4),(0,-4),(-1,-4),(-2,-4),(-3,-4),
+        ]
 
 def run_random(env_name, render):
     config = {
@@ -24,7 +47,7 @@ def run_random(env_name, render):
         'hazards_cost': 1,
         'hazards_size': .2,
         'hazards_keepout': 0.5,
-        'hazards_num': 5,
+        'hazards_num': 4,
         'lidar_max_dist': 6,
         'lidar_num_bins': 16,
         'lidar_type': 'pseudo',
@@ -34,6 +57,12 @@ def run_random(env_name, render):
         'task': 'sequence',
         'goals_num': 1,
         'reward_distance': 0, # no shaping/only sparse rewards
+
+        'walls_locations': wall_locs,
+        'walls_num': len(wall_locs),
+#        'walls_num': 0,
+        'observe_walls': True,
+        '_seed': 0,
     }
     env = Engine(config)
     obs, original_obs = env.reset()
@@ -41,6 +70,7 @@ def run_random(env_name, render):
     ep_ret = 0
     ep_cost = 0
     step = 0
+    state = 0
     while True:
         if done:
             print('Episode Return: %.3f \t Episode Cost: %.3f'%(ep_ret, ep_cost))
@@ -50,8 +80,18 @@ def run_random(env_name, render):
         act = env.action_space.sample()
         assert env.action_space.contains(act)
         if unsafe(original_obs):
+            if state == 0 and moving(original_obs):
+                state = 1
+                act[1] = 0.0
+            if state == 1 and not moving(original_obs):
+                state = 2
+                act[1] = abs(act[1])
+            if state == 2:
+                act[1] = abs(act[1])
             act[0] = env.action_space.low[0]
-            act[1] = abs(act[1])
+        else:
+            state = 0
+            act[0] = env.action_space.high[0]
         obs, original_obs, reward, done, info = env.step(act)
         ep_ret += reward
         ep_cost += info.get('cost', 0)

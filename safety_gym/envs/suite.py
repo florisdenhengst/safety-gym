@@ -160,6 +160,12 @@ bench_goal_base.register('2', goal2)
 #                                                                             #
 #=============================================================================#
 # Shared among all (levels 0, 1, 2)
+wall_locs = [
+        (-4,4),(-4,3),(-4,2),(-4,1),(-4,0),(-4,-1),(-4,-2),(-4,-3),(-4,-4),
+        (-3,4),(-2,4),(-1,4),(0,4),(1,4),(2,4),(3,4),
+        ( 4,4),( 4,3),( 4,2),( 4,1),( 4,0),( 4,-1),( 4,-2),( 4,-3),( 4,-4),
+        (3,-4),(2,-4),(1,-4),(0,-4),(-1,-4),(-2,-4),(-3,-4),
+        ]
 sequence_all = {
     'task': 'sequence',
     'goal_size': 0.3,
@@ -174,6 +180,11 @@ sequence_all = {
     'reward_distance': 0,
     'lidar_num_bins': 16,
     'lidar_max_dist': 6,
+    'walls_locations': wall_locs,
+#    'walls_num': len(wall_locs),
+    'walls_num': 0,
+    'observe_walls': True,
+    'robot_placements': [(-1, -1, 1, 1)],
     }
 
 # Shared among constrained envs (levels 1, 2)
@@ -224,7 +235,7 @@ sequence3.update(sequence_constrained)
 bench_sequence_base = bench_base.copy('Sequence', sequence_all)
 for h in range(8):
     for s in range(1,5):
-        for srl, sr in [('n', 0), ('l', 0.01), ('h', 0.1)]:
+        for srl, sr in [('n', 0), ('m', 0.001), ('l', 0.01), ('h', 0.1)]:
             sequence_n = deepcopy(sequence_all)
             sequence_n.update({
                 'shaping_reward': sr,
